@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com 'wasm-unsafe-eval' blob:; worker-src 'self' blob: https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; connect-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; img-src 'self' blob: data:; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<title>Passport Reader</title>
+<meta name="description" content="Read a passport data page in your browser: MRZ check digits verified, fields ready to copy into visa forms. Images never leave your device.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='5' y='2' width='22' height='28' rx='3' fill='%230E6B52'/%3E%3Ccircle cx='16' cy='13' r='5' fill='none' stroke='%23fff' stroke-width='2'/%3E%3Crect x='10' y='22' width='12' height='2' rx='1' fill='%23fff'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #f6f7f5; --surface: #ffffff; --surface-2: #f0f2ef; --text: #17201c; --muted: #5d6963; --line: #dfe4e0;
+    --accent: #0e6b52; --accent-text: #ffffff; --accent-soft: #e2f1eb;
+    --ok: #167a46; --ok-soft: #e3f4ea; --warn: #9a5b00; --warn-soft: #fbefd9; --bad: #b42318; --bad-soft: #fde7e5;
+    --radius: 14px; --shadow: 0 1px 2px rgba(16, 24, 20, .06), 0 4px 16px rgba(16, 24, 20, .05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1412; --surface: #161d1a; --surface-2: #1d2622; --text: #e8eeea; --muted: #97a59e; --line: #2a3530;
+      --accent: #34c38f; --accent-text: #06261b; --accent-soft: #163a2d;
+      --ok: #4ad08b; --ok-soft: #12301f; --warn: #f0b354; --warn-soft: #36280f; --bad: #ff8a80; --bad-soft: #3a1714;
+      --shadow: none;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+  main { max-width: 1120px; margin: 0 auto; padding: 20px 16px 48px; }
+  header { margin-bottom: 18px; }
+  h1 { font-size: 1.6rem; line-height: 1.2; margin: 0 0 6px; letter-spacing: -.01em; }
+  header p { margin: 0; color: var(--muted); max-width: 62ch; }
+  .privacy { display: inline-flex; gap: 6px; align-items: center; margin-top: 10px; padding: 4px 10px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: .85rem; font-weight: 600; }
+
+  .grid { display: grid; gap: 16px; }
+  @media (min-width: 900px) { .grid { grid-template-columns: 400px 1fr; align-items: start; } .left { position: sticky; top: 16px; } }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px; }
+
+  .drop { border: 2px dashed var(--line); border-radius: 12px; padding: 20px 14px; text-align: center; transition: border-color .15s, background .15s; }
+  .drop.over { border-color: var(--accent); background: var(--accent-soft); }
+  .drop p { margin: 10px 0 0; color: var(--muted); font-size: .9rem; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+  button, .btn { appearance: none; border: 1px solid var(--line); background: var(--surface); color: var(--text); font: inherit; font-size: .95rem; font-weight: 600;
+    padding: 10px 14px; border-radius: 10px; cursor: pointer; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+  button:hover, .btn:hover { background: var(--surface-2); }
+  button:focus-visible, .btn:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  button.primary, .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+  button.primary:hover, .btn.primary:hover { filter: brightness(1.08); }
+  button:disabled { opacity: .5; cursor: default; }
+  input[type=file] { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
+  .preview { margin-top: 14px; display: none; }
+  .preview.show { display: block; }
+  .preview canvas { width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2); display: block; }
+  .preview .row { display: flex; gap: 8px; margin-top: 10px; }
+  .preview .row button { flex: 1; }
+
+  .status { margin-top: 14px; font-size: .92rem; color: var(--muted); min-height: 1.5em; }
+  .bar { height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; margin-top: 8px; visibility: hidden; }
+  .bar.show { visibility: visible; }
+  .bar > div { height: 100%; width: 100%; background: var(--accent); transform: scaleX(0); transform-origin: left; transition: transform .2s; }
+
+  .summary { border-radius: 10px; padding: 10px 12px; font-weight: 600; font-size: .95rem; margin-bottom: 12px; }
+  .summary.ok { background: var(--ok-soft); color: var(--ok); }
+  .summary.warn { background: var(--warn-soft); color: var(--warn); }
+  .empty { color: var(--muted); text-align: center; padding: 40px 12px; }
+
+  .fields { display: grid; gap: 8px; }
+  .field { display: grid; gap: 4px 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+  @media (min-width: 640px) { .field { grid-template-columns: 170px 1fr auto; align-items: center; } }
+  .field label { font-size: .85rem; font-weight: 600; color: var(--muted); }
+  .field input { width: 100%; font: inherit; font-size: 1rem; color: var(--text); background: transparent; border: 1px solid transparent; border-radius: 8px; padding: 6px 8px; margin: -6px -8px; min-height: 40px; }
+  .field input:hover { border-color: var(--line); }
+  .chip { justify-self: start; font-size: .78rem; font-weight: 600; padding: 3px 8px; border-radius: 999px; background: var(--surface-2); color: var(--muted); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+  @media (min-width: 640px) { .chip { justify-self: end; max-width: 260px; } }
+  .chip.ok { background: var(--ok-soft); color: var(--ok); }
+  .chip.warn { background: var(--warn-soft); color: var(--warn); }
+  .chip.bad { background: var(--bad-soft); color: var(--bad); }
+
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .actions button { flex: 1 1 140px; }
+  details { margin-top: 16px; }
+  summary { cursor: pointer; font-weight: 600; color: var(--muted); min-height: 44px; display: flex; align-items: center; }
+  textarea { width: 100%; min-height: 220px; font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--text); background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px; resize: vertical; }
+  details .row { display: flex; justify-content: flex-end; margin-top: 8px; }
+  footer a { color: inherit; }
+  footer { margin-top: 28px; color: var(--muted); font-size: .85rem; max-width: 70ch; }
+  .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%) translateY(20px); opacity: 0; background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-weight: 600; font-size: .9rem; transition: opacity .2s, transform .2s; pointer-events: none; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Passport Reader</h1>
+    <p>Reads the passport data page, verifies the machine-readable lines (MRZ) with their check digits, and gives you every field ready to copy into a visa form.</p>
+    <span class="privacy">🔒 Runs in your browser — images are never uploaded</span>
+  </header>
+
+  <div class="grid">
+    <section class="card left" aria-label="Passport image">
+      <div class="drop" id="drop">
+        <div class="buttons">
+          <label class="btn primary" for="camera">📷 Take photo</label>
+          <label class="btn" for="file">Upload image / PDF</label>
+        </div>
+        <input type="file" id="camera" accept="image/*" capture="environment">
+        <input type="file" id="file" accept="image/*,application/pdf">
+        <p>or drag a file here, or paste a screenshot (Ctrl/⌘ V). Keep the two coded lines at the bottom of the page in the photo.</p>
+      </div>
+      <div class="preview" id="preview">
+        <canvas id="canvas" aria-label="Passport image preview"></canvas>
+        <div class="row">
+          <button id="rotate" type="button">↻ Rotate &amp; re-read</button>
+          <button id="clear" type="button">Clear</button>
+        </div>
+      </div>
+      <div class="status" id="status" role="status" aria-live="polite">Loading the text reader…</div>
+      <div class="bar" id="bar"><div></div></div>
+    </section>
+
+    <section class="card" aria-label="Extracted fields">
+      <div id="summary" class="summary" hidden></div>
+      <div id="fields" class="fields"><div class="empty">Fields appear here after you add a passport image.</div></div>
+      <div class="actions" id="actions" hidden>
+        <button type="button" id="copyTSV" class="primary">Copy for Excel</button>
+        <button type="button" id="copyJSON">Copy JSON</button>
+        <button type="button" id="dlCSV">Download CSV</button>
+        <button type="button" id="dlJSON">Download JSON</button>
+      </div>
+      <details id="rawBox">
+        <summary>Raw OCR text</summary>
+        <textarea id="raw" spellcheck="false" aria-label="Raw OCR text"></textarea>
+        <div class="row"><button type="button" id="reparse">Re-read edited text</button></div>
+      </details>
+    </section>
+  </div>
+
+  <footer>
+    Always check each value against the passport before submitting an application. Green = confirmed by an MRZ check digit; amber = inferred or auto-corrected; red = check digit failed.
+    <br>Text recognition: <a href="https://github.com/naptha/tesseract.js">Tesseract.js</a> (Apache-2.0) · MRZ model: <a href="https://github.com/DoubangoTelecom/tesseractMRZ">DoubangoTelecom/tesseractMRZ</a> (BSD-3-Clause, © 2019 DoubangoTelecom).
+  </footer>
+</main>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js" integrity="sha384-GJqSu7vueQ9qN0E9yLPb3Wtpd7OrgK8KmYzC8T1IysG1bcvxvIO4qtYR/D3A991F" crossorigin="anonymous"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+Surname
+SHARMA
+Given Name(s)
+RAHUL KUMAR
+Nationality
+INDIAN
+Sex
+M
+Date of Birth
+15/08/1990
+Place of Birth
+DELHI
+Place of Issue
+DELHI
+Date of Issue
+10/03/2018
+Date of Expiry
+09/03/2028
+Passport No.
+K1234567
+P<INDSHARMA<<RAHUL<KUMAR<<<<<<<<<<<<<<<<<<<<
+K1234567<6IND9008157M2803098<<<<<<<<<<<<<<<2
